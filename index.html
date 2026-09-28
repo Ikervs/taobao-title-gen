@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>淘宝标题生成器 v2</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.6 -apple-system,"Microsoft YaHei",sans-serif;background:#f5f6f8;color:#222}
+header{background:#ff5000;color:#fff;padding:14px 24px;font-size:18px;font-weight:700}
+header small{font-weight:400;font-size:13px;opacity:.9;margin-left:8px}
+.tabs{display:flex;background:#fff;border-bottom:1px solid #e0e0e0;padding:0 12px;overflow-x:auto;position:sticky;top:0;z-index:5}
+.tabs button{border:none;background:none;padding:12px 16px;cursor:pointer;font:inherit;border-bottom:2px solid transparent;white-space:nowrap;color:#555}
+.tabs button.active{border-bottom-color:#ff5000;color:#ff5000;font-weight:700}
+main{max-width:1240px;margin:0 auto;padding:16px}
+.panel{display:none}.panel.active{display:block}
+.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h3{margin:0 0 12px;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.field label{display:block;font-size:12px;color:#666;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;padding:7px 8px;border:1px solid #ddd;border-radius:5px;font:inherit}
+textarea{height:110px;font-family:monospace;font-size:12px;resize:vertical}
+.btn{background:#ff5000;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font:inherit}
+.btn:hover{background:#e64a00}
+.btn.sec{background:#fff;color:#ff5000;border:1px solid #ff5000}
+.btn.sm{padding:4px 10px;font-size:12px}
+.info{display:flex;flex-wrap:wrap;gap:8px;font-size:13px;margin-top:10px}
+.info span{background:#f0f0f0;padding:3px 8px;border-radius:4px}
+.warn{color:#b35a00;background:#fff7e6!important}
+.err{color:#c00;background:#fff0f0!important}
+.ok{color:#0a0;background:#eaffea!important}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border-bottom:1px solid #eee;padding:7px 6px;text-align:left;vertical-align:top}
+th{background:#fafafa;font-weight:600;position:sticky;top:0}
+.wrap{overflow:auto}
+.title-cell{word-break:break-all;max-width:440px;font-size:13px}
+.mono{font-family:monospace;white-space:nowrap}
+.badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;margin:1px 2px}
+.row-label td:first-child{font-weight:700;color:#ff5000;white-space:nowrap}
+.dim{display:inline-block;margin:2px 6px 2px 0;padding:4px 9px;border-radius:4px;background:#f0f0f0;font-size:13px}
+.dim.ok{background:#eaffea}.dim.no{background:#fff0f0}
+.actions{margin:8px 0 0 18px;color:#b35a00}
+.hint{font-size:12px;color:#999}
+</style>
+</head>
+<body>
+<header>淘宝标题生成器 v2<small>约束求解器 · C 层参数可见可调</small></header>
+
+<div class="tabs" id="tabs">
+ <button class="active" data-t="import">① 导入</button>
+ <button data-t="lexicon">② 词库</button>
+ <button data-t="gen">③ 生成</button>
+ <button data-t="diag">④ 诊断</button>
+ <button data-t="history">⑤ 历史</button>
+ <button data-t="cfg">⚙ 设置</button>
+</div>
+
+<main>
+<!-- ① 导入 -->
+<div class="panel active" id="p-import">
+ <div class="card"><h3>搜索排行数据（生意参谋导出，支持区间值）</h3>
+  <textarea id="raw" placeholder="搜索词	搜索人气	点击率	支付转化率
+实木办公桌	1万-5万	5.00%-10.00%	1.00%-3.00%"></textarea>
+  <div class="hint">只需这四列；万/k/% 自动换算。可选在下面补「在线商品数」。</div>
+ </div>
+ <div class="card"><h3>可选补充</h3>
+  <div class="grid">
+   <div class="field"><label>在线商品数表（搜索词 + 在线商品数）</label><textarea id="supply" style="height:60px" placeholder="实木办公桌	12800"></textarea></div>
+   <div class="field"><label>本店现有标题（每行一条，用于店内排重）</label><textarea id="exist" style="height:60px" placeholder="粘贴自己店铺已在用的标题，每行一条"></textarea></div>
+   <div class="field"><label>主营类目方向</label><input id="cate" placeholder="例：办公桌 / 办公家具"></div>
+  </div>
+ </div>
+ <div class="card"><h3>过滤与约束</h3>
+  <div class="grid">
+   <div class="field"><label>🚫 屏蔽词（逗号分隔）</label><input id="ban" value="宜家,林氏木业,二手,出租"></div>
+   <div class="field"><label>✅ 必含词（逗号分隔）</label><input id="must" placeholder="实木,可升降"></div>
+   <div class="field"><label>🔒 属性白名单（标题只允许出现这些属性词）</label><input id="awhite" placeholder="密度板,简约,家用,学生"></div>
+   <div class="field"><label>店铺类型</label><select id="shopType"><option value="C">C店</option><option value="B">天猫</option></select></div>
+  </div>
+  <div class="grid" style="margin-top:12px">
+   <div class="field"><label>区间取值</label><select id="mode"><option value="mid">中位</option><option value="lo">保守（取下限）</option><option value="hi">激进（取上限）</option></select></div>
+   <div class="field"><label>头部百分位</label><input id="headPct" type="number" step="0.01" value="0.12"></div>
+   <div class="field"><label>尾部百分位</label><input id="tailPct" type="number" step="0.01" value="0.45"></div>
+   <div class="field"><label>生成条数</label><input id="batchN" type="number" value="20" max="500"></div>
+  </div>
+  <div style="margin-top:12px"><button class="btn" onclick="doImport()">导入并分析</button></div>
+  <div class="info" id="importInfo"></div>
+ </div>
+</div>
+
+<!-- ② 词库 -->
+<div class="panel" id="p-lexicon">
+ <div class="card"><h3>词库预览 <span id="lexCnt" class="hint"></span></h3>
+  <div class="wrap" style="max-height:540px;overflow:auto"><table id="lexTable"><thead><tr>
+   <th>搜索词</th><th>人气</th><th>转化率</th><th>层级</th><th>标签</th><th>综合分</th><th>转化效率</th><th>提示</th>
+  </tr></thead><tbody></tbody></table></div>
+ </div>
+</div>
+
+<!-- ③ 生成 -->
+<div class="panel" id="p-gen">
+ <div class="card"><button class="btn" onclick="doGenerate()">生成标题</button>
+  <span class="hint" style="margin-left:8px">结果按词集去重，并自动排除本店现有标题</span></div>
+ <div class="card" id="resCard" style="display:none"><div class="wrap" style="max-height:620px;overflow:auto"><table id="resTable"><thead><tr>
+  <th>#</th><th>层</th><th>标题</th><th>长度</th><th>状态</th><th>建议</th><th>操作</th>
+ </tr></thead><tbody></tbody></table></div></div>
+</div>
+
+<!-- ④ 诊断 -->
+<div class="panel" id="p-diag">
+ <div class="card"><h3>诊断现成标题（自己或竞品的都行）</h3>
+  <div class="field"><textarea id="diagInput" style="height:60px" placeholder="粘贴任意标题"></textarea></div>
+  <button class="btn" onclick="doDiag()" style="margin-top:8px">诊断</button>
+  <div id="diagOut" style="margin-top:12px"></div>
+ </div>
+</div>
+
+<!-- ⑤ 历史 -->
+<div class="panel" id="p-history">
+ <div class="card"><h3>本地历史（存在浏览器 localStorage）</h3><div id="histList"></div>
+  <div style="margin-top:12px">
+   <button class="btn sec" onclick="clearHist()">清空历史</button>
+   <button class="btn sec" onclick="exportCSV()">导出当前结果 CSV</button>
+  </div>
+ </div>
+</div>
+
+<!-- ⚙ 设置 -->
+<div class="panel" id="p-cfg">
+ <div class="card"><h3>可调参数（C 层：非平台公开规则，改完请重新导入/生成）</h3>
+  <div class="grid" id="cfgGrid"></div>
+  <p class="hint" style="margin-top:10px">TITLE_MAX=60 是平台上限；CORE_ZONE / FILL_TOLERANCE / posWeight / 打分权重 / 百分位均为经验值，请自行调参验证。</p>
+ </div>
+</div>
+</main>
+
+<script>
+/* ================================================================
+   engine — 淘宝标题生成引擎 v2（约束求解器定位）
+   A 层=平台硬规则(不可关) / B 层=行业共识(可关警告) / C 层=可调参数
+   ================================================================ */
+const Engine=(()=>{
+'use strict';
+
+/* ---- C 层：可调参数 ---- */
+const CFG={
+ TITLE_MAX:60,
+ CORE_ZONE:14,
+ MIN_WORD:2,
+ MAX_CANDIDATES:120,
+ FILL_TOLERANCE:4,
+ BATCH_MAX:500,
+ HEAD_PCT:0.12, TAIL_PCT:0.45,
+ MIN_SAMPLE:80,
+ SPREAD_PENALTY:0.3,
+ posWeight:(i,n)=>{if(n<=1)return 1;if(i===0)return 1;if(i===n-1)return 0.9;return 0.55+0.35*(1-i/Math.max(n-2,1));}
+};
+
+/* ---- A 层：硬规则数据 ---- */
+const STOP=new Set(['的','了','之','与','和','或','及','等','者','款','新款','正品','包邮','热卖','热销','爆款','旗舰店','官网','特价','促销','现货']);
+const EXTREME=[/最[高低价大全新快好省强]*\w{0,4}/,/第一/,/全网/,/独家/,/国家级/,/顶级/,/首选/,/绝对/,/极品/,/万能/,/100%/,/纯天然/,/无添加/,/官方授权/,/领导品牌/,/史上/];
+const YEAR_RE=/(?:^|[^0-9])(?:20|19)\d{2}(?:[^0-9]|$)/;
+
+const CATEGORY_GROUPS=[
+ {name:'桌类',words:['办公桌','电脑桌','书桌','写字桌','写字台','学习桌','工作台','课桌','会议桌','洽谈桌','餐桌','方桌']},
+ {name:'柜类',words:['文件柜','储物柜','书柜','衣柜','鞋柜','柜子','边柜']},
+ {name:'椅类',words:['办公椅','椅子','转椅','电竞椅','人体工学椅','餐椅','凳子']},
+ {name:'床架',words:['床','床架','上下铺','榻榻米']},
+];
+const SYNONYM_GROUPS=[
+ ['老板桌','总裁桌','大班台','主管桌','经理桌'],
+ ['简约','现代','北欧','日式','轻奢'],
+ ['家用','卧室','客厅','书房','宿舍'],
+];
+
+const ATTR={
+ material:['实木','钢木','玻璃','大理石','塑料','竹','藤','金属','木质','板式','密度板','颗粒板','橡木','胡桃木','松木','白蜡木','岩板','不锈钢','铝合金','皮质','布艺','碳纤维','免漆板','生态板'],
+ style:['简约','现代','北欧','中式','欧式','美式','工业风','复古','轻奢','日式','韩式','地中海','新中式','侘寂','奶油风'],
+ func:['升降','折叠','旋转','带抽屉','可移动','带锁','转角','L型','双人','小型','迷你','加大','加厚','可调节','伸缩','拼接','嵌入式','壁挂','免安装','气动','电动','静音','滑轮','翻盖','隐藏式'],
+ scene:['家用','办公室','卧室','客厅','书房','宿舍','户外','厨房','卫生间','阳台','商铺','会议室','教室','儿童房','榻榻米','出租房'],
+ crowd:['学生','儿童','老人','孕妇','男士','女士','小孩','成人','小学生','大学生','幼儿','职员','老板','女孩','男孩']
+};
+const ATTR_TOKENS=new Set(Object.values(ATTR).flat());
+const ATTR_OF=new Map(Object.entries(ATTR).flatMap(([k,ws])=>ws.map(w=>[w,k])));
+
+/* ---- 工具 ---- */
+const tl=s=>[...(s||'')].reduce((n,c)=>n+(/^[0-9a-zA-Z]$/.test(c)?1:2),0);
+function shuffle(a,seed){let s=seed|0;const rng=()=>{s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+const norm=s=>String(s||'').toLowerCase().replace(/[\s\u3000,，.。\-_—()（）]/g,'');
+
+/* ---- 1. 区间值 ---- */
+function parseInterval(v){
+ if(v==null||String(v).trim()==='') return {lo:NaN,hi:NaN,mid:NaN,raw:'',spread:1};
+ let s=String(v).trim().replace(/[,\u3000]/g,'');
+ const pct=s.includes('%'); s=s.replace(/%/g,'');
+ const mul=m=>m==='万'?1e4:m==='亿'?1e8:/^k$/i.test(m||'')?1e3:1;
+ const one=r=>{if(!r)return NaN;const m=String(r).match(/^([\d.]+)\s*(万|亿|k|K)?$/);return m?parseFloat(m[1])*mul(m[2]):parseFloat(r);};
+ const p=s.split(/[-~至—]/);
+ if(p.length>=2){
+  const lo=one(p[0]),hi=one(p[p.length-1]);
+  if(Number.isFinite(lo)&&Number.isFinite(hi)){const g=(lo>0&&hi>0)?Math.sqrt(lo*hi):(lo+hi)/2;return {lo,hi,mid:pct?g/100:g,raw:v,spread:hi/Math.max(lo,1e-9)};}
+ }
+ const x=one(s); return {lo:x,hi:x,mid:pct?x/100:x,raw:v,spread:1};
+}
+const pick=(iv,mode='mid')=>Number.isFinite(iv?.mid)?(mode==='lo'?iv.lo:mode==='hi'?iv.hi:iv.mid):0;
+
+/* ---- 2. 解析 ---- */
+function parseCSV(text){
+ text=text.replace(/^\uFEFF/,'').trim(); if(!text) return [];
+ const lines=text.split(/\r?\n/).map(l=>l.split(/\t|,/).map(s=>s.trim()));
+ const hs=lines[0].map(h=>h.replace(/\s+/g,''));
+ const keyOf=h=>{const s=h.toLowerCase();
+  if(/^搜索词$|^关键词$|^关键字$|^query$/.test(s))return'kw';
+  if(/搜索人气|^人气$/.test(s))return'pop';
+  if(/点击率|^ctr$/.test(s))return'ctr';
+  if(/支付转化率|^转化率$|^cvr$|^转化/.test(s))return'cvr';
+  if(/在线商品数|商品数|供给|宝贝数/.test(s))return'sup';
+  if(/商城点击占比|天猫占比/.test(s))return'tmall';return null;};
+ const ks=hs.map(keyOf),out=[];
+ for(let i=1;i<lines.length;i++){
+  const r={};
+  hs.forEach((h,j)=>{const k=ks[j],iv=parseInterval(lines[i][j]);if(k){r[k]=iv;r[k+'_raw']=lines[i][j]??'';}r['_'+h]=lines[i][j]??'';});
+  r.kw_str=(r._搜索词||r._关键词||r._词||r._关键字||lines[i][0]||'').trim().replace(/[【】\[\]★#|/@!！，,.·\-_—]/g,'');
+  if(!r.kw_str||r.kw_str.length<CFG.MIN_WORD) continue;
+  if(!r.pop&&lines[i][1]) r.pop=parseInterval(lines[i][1]);
+  if(!r.ctr&&lines[i][2]) r.ctr=parseInterval(lines[i][2]);
+  if(!r.cvr&&lines[i][3]) r.cvr=parseInterval(lines[i][3]);
+  out.push(r);
+ }
+ return out;
+}
+function mergeSupply(rows,supplyRows){
+ const map=new Map();(supplyRows||[]).forEach(r=>{if(r?.kw_str) map.set(norm(r.kw_str),r.sup);});
+ let n=0;rows.forEach(r=>{const k=norm(r.kw_str);if(map.has(k)&&!r.sup){r.sup=map.get(k);n++;}});
+ return {rows,merged:n};
+}
+
+/* ---- 3. 标注 ---- */
+function tagWord(w){
+ if(ATTR_OF.has(w)) return {type:'attr',cat:ATTR_OF.get(w)};
+ const inner=[];ATTR_TOKENS.forEach(t=>{if(w!==t&&w.includes(t)) inner.push({token:t,cat:ATTR_OF.get(t)});});
+ if(inner.length) return {type:'core+attr',inner};
+ for(const g of CATEGORY_GROUPS) if(g.words.includes(w)) return {type:'cat',cat:g.name};
+ return {type:'core',cat:null};
+}
+function routeHits(word){
+ const out=[];
+ CATEGORY_GROUPS.forEach(g=>{if(g.words.some(w=>word.includes(w)||w.includes(word))) out.push({name:g.name,kind:'category'});});
+ SYNONYM_GROUPS.forEach((g,i)=>{if(g.some(w=>word===w||word.includes(w))) out.push({name:'syn:'+i,kind:'synonym'});});
+ return out;
+}
+
+/* ---- 4. 分词（正向最大匹配） ---- */
+function segment(title,dictSet){
+ const hits=[];const n=title.length;
+ for(let i=0;i<n;i++) for(let j=n;j>i;j--){const w=title.slice(i,j);if(dictSet.has(w)){hits.push(w);break;}}
+ return hits;
+}
+
+/* ---- 5. 清洗与分析 ---- */
+function analyze(rows,opts={}){
+ const {ban=[],must=[],shopType='C',mode='mid',headPct=CFG.HEAD_PCT,tailPct=CFG.TAIL_PCT,absHead=null,absTail=null}=opts;
+ const warns=[],infos=[];
+ let data=rows.filter(r=>!ban.some(b=>r.kw_str.includes(b)));
+ if(shopType==='C') data=data.filter(r=>!r.tmall||pick(r.tmall,'mid')<=60);
+
+ const allKw=new Set(data.map(r=>r.kw_str));
+ data=data.filter(r=>![...allKw].some(y=>y!==r.kw_str&&y.includes(r.kw_str)&&!ATTR_TOKENS.has(r.kw_str)));
+
+ // ★分层永远用 mid，mode 只影响打分排序
+ const Pmid=r=>pick(r.pop,'mid');
+ const sorted=[...data].sort((a,b)=>Pmid(b)-Pmid(a));
+ const at=i=>sorted[i]?Pmid(sorted[i]):0;
+ const thH=at(Math.max(0,Math.floor(sorted.length*headPct)-1));
+ const thT=at(Math.max(0,Math.floor(sorted.length*tailPct)-1));
+
+ const rankOf=(arr,key,desc=true)=>{const s=[...arr].sort(desc?(a,b)=>key(b)-key(a):(a,b)=>key(a)-key(b));const m=new Map();s.forEach((r,i)=>m.set(r,i+1));const n=s.length||1;return r=>m.get(r)/n;};
+ const P=r=>pick(r.pop,mode),V=r=>pick(r.cvr,mode),C=r=>pick(r.ctr,mode),S=r=>pick(r.sup,mode);
+ const rPop=rankOf(data,Pmid),rCvr=rankOf(data,r=>V(r)),rCtr=rankOf(data,r=>C(r)),rSup=rankOf(data,r=>S(r),false);
+
+ data.forEach(r=>{
+  const sp=r.pop?.spread||1;
+  const confPenalty=sp>5?(1-CFG.SPREAD_PENALTY*Math.min((sp-5)/10,1)):1;
+  const hasSup=Number.isFinite(S(r))&&S(r)>0;
+  r.sc=(rPop(r)*0.30+rCvr(r)*0.35+rCtr(r)*0.20+(hasSup?rSup(r):0)*0.15)*confPenalty;
+  r.eff=(V(r)+1e-4)/(Math.sqrt(Math.max(P(r),1))+0.01)*(hasSup?(S(r)<1e4?1:0.6):1);
+  r.dsr=hasSup?P(r)/Math.max(S(r),1):r.eff;
+  r.tag=tagWord(r.kw_str);
+  r.routes=routeHits(r.kw_str);
+  r.tier=(absHead!=null&&Pmid(r)>=absHead)?'head':(absTail!=null&&Pmid(r)<=absTail)?'tail':Pmid(r)>=thH?'head':Pmid(r)<=thT?'tail':'mid';
+  r.warn=sp>5?`区间跨度×${sp.toFixed(1)}`:null;
+  r.must=must.some(m=>r.kw_str.includes(m));
+ });
+
+ const pool={head:[],mid:[],tail:[]};data.forEach(r=>pool[r.tier].push(r));
+ pool.head.sort((a,b)=>b.sc-a.sc);pool.mid.sort((a,b)=>b.dsr-a.dsr);pool.tail.sort((a,b)=>b.eff-a.eff);
+
+ if(data.length<CFG.MIN_SAMPLE) warns.push(`样本仅 ${data.length} 词（<${CFG.MIN_SAMPLE}），百分位分层不稳定，建议切「绝对阈值」或补充更多词`);
+ const miss=must.filter(m=>!data.some(r=>r.kw_str.includes(m)));if(miss.length) warns.push(`必含词未命中：${miss.join('、')}`);
+ if(!data.some(r=>r.sup)) infos.push('无在线商品数列，长尾筛选使用「转化效率」代理指标，准确度低于供给版');
+ const low=data.filter(r=>STOP.has(r.kw_str)||YEAR_RE.test(r.kw_str));if(low.length) infos.push(`${low.length} 个低价值/时效词已保留但建议屏蔽`);
+
+ return {data,pool,dictSet:new Set(data.map(r=>r.kw_str)),P:(r)=>P(r),V:(r)=>V(r),C:(r)=>C(r),thresholds:{thH,thT},warnings:warns,infos,hasSupply:data.some(r=>r.sup)};
+}
+
+/* ---- 6. 组合器：贪心 + 局部交换（永远有解） ---- */
+function conflict(pick,c){const w=c.kw_str;return pick.some(p=>p.kw_str.includes(w)||w.includes(p.kw_str));}
+
+function compose(pools,opts={}){          // pools = [核心池, 补充池1, 补充池2...]
+ const prefix=opts.prefix||'',pLen=tl(prefix),limit=CFG.TITLE_MAX-pLen,minW=opts.minWords||3;
+ const flat=[...new Map(pools.flat().map(c=>[c.kw_str,c])).values()];
+ const list=flat.filter(c=>c.kw_str&&tl(c.kw_str)<=limit);
+ if(!list.length) return {title:prefix,words:[],len:pLen,gap:limit,ok:false,score:0};
+
+ const prio=c=>{const t=c._tag?.type;return t==='attr'?3:t==='core+attr'?2:1;};
+ list.sort((a,b)=>(b._sc||0)-(a._sc||0)||prio(a)-prio(b));
+ const pool=list.slice(0,CFG.MAX_CANDIDATES);
+
+ const build=(seed)=>{
+  const arr=pool.slice();if(seed!=null) shuffle(arr,seed);
+  arr.sort((a,b)=>(b._sc||0)-(a._sc||0));
+  const g=[];let rem=limit;
+  const first=arr.find(c=>c._tag?.type!=='attr'&&tl(c.kw_str)<=rem&&!conflict(g,c))||arr.find(c=>tl(c.kw_str)<=rem&&!conflict(g,c));
+  if(first){g.push(first);rem-=tl(first.kw_str);}
+  for(const c of arr){if(g.includes(c))continue;const l=tl(c.kw_str);if(l<=rem&&!conflict(g,c)){g.push(c);rem-=l;}}
+  return g;
+ };
+ const score=g=>g.reduce((s,c,i)=>s+(c._sc||0)*CFG.posWeight(i,g.length),0);
+ const ok=g=>g.length>=minW&&tl(g.map(c=>c.kw_str).join(''))<=CFG.TITLE_MAX;
+
+ let best=null;
+ for(let s=0;s<8;s++){
+  const g=build(s===0?null:s*137);
+  const gap=limit-tl(g.map(c=>c.kw_str).join(''));
+  if(gap>0){
+   const unused=pool.filter(c=>!g.includes(c)&&tl(c.kw_str)<=gap&&!conflict(g,c));
+   if(unused.length) g.push(unused[0]);
+   else for(const u of pool.filter(c=>!g.includes(c))){for(let i=1;i<g.length;i++){const l1=tl(g[i].kw_str),l2=tl(u.kw_str);if(l2>l1&&l2-l1<=gap){g.splice(i,1,u);break;}}}
+  }
+  if(ok(g)&&(!best||score(g)>score(best))) best=g;
+ }
+ if(!best) best=build(null);
+
+ const words=best.map(c=>c.kw_str),title=prefix+words.join(''),len=tl(title),gap=CFG.TITLE_MAX-len;
+ return {title,words,len,gap,ok:gap<=CFG.FILL_TOLERANCE&&words.length>=minW,score:score(best)};
+}
+
+/* ---- 7. 三层模板 ---- */
+function byTag(arr,type){return arr.filter(r=>r.tag?.type===type);}
+function buildTitles(pool,ctx={}){
+ const idx=ctx.index||0,seed=ctx.seed??idx;
+ const W=(arr,key='sc')=>arr.map(r=>({...r,_sc:r[key],_tag:r.tag}));
+ const H=W(pool.head,'sc'),M=W(pool.mid,'dsr'),T=W(pool.tail,'eff');
+ const pH=i=>H[i%Math.max(1,H.length)];
+ const head=compose([pH(idx),...H.slice(1,6),...M.slice(0,8)],{minWords:3,seed});
+ const waist=compose([...byTag(pool.mid,'attr').slice(0,6),...byTag(pool.mid,'core+attr').slice(0,6),pH(idx+1),...M.slice(0,12)],{minWords:5,seed:seed+1});
+ const tail=compose([T[idx%Math.max(1,T.length)],...T.slice(0,24),...byTag(pool.tail,'func').slice(0,8),...byTag(pool.tail,'scene').slice(0,6),...M.slice(6,14)],{minWords:6,seed:seed+2});
+ const fmt=r=>{if(!r?.title) return {title:'',len:0,ok:false,msg:'词量不足',words:[]};
+  const over=r.len>CFG.TITLE_MAX,gap=CFG.TITLE_MAX-r.len;
+  return {...r,ok:r.ok,msg:r.ok?'合规':over?`超${r.len-CFG.TITLE_MAX}（需删减）`:`差${gap}字符，建议补${gap<=8?1:2}个属性/功能词`};};
+ return {head:fmt(head),waist:fmt(waist),tail:fmt(tail)};
+}
+
+/* ---- 8. 校验（A 层错误 / B 层警告） ---- */
+function validate(title,ctx={}){
+ const errs=[],warns=[];
+ const len=tl(title);
+ if(len>CFG.TITLE_MAX) errs.push(`超长 ${len-CFG.TITLE_MAX} 字符（上限${CFG.TITLE_MAX}）`);
+ else if(len<CFG.TITLE_MAX-CFG.FILL_TOLERANCE) warns.push(`未满：还差 ${CFG.TITLE_MAX-len} 字符`);
+ if(/\s/.test(title)) warns.push('含空格：不违规但断开紧密排列、浪费字符');
+ if(/[【】\[\]★#|/@!！，,.·—_]/.test(title)) warns.push('含符号：建议删除，纯汉字/数字权重最稳');
+ EXTREME.forEach(re=>{const m=title.match(re);if(m) errs.push(`极限词风险：「${m[0]}」`);});
+ if(YEAR_RE.test(title)) warns.push('含年份词，次年需更换');
+
+ const hits=ctx.dictSet?segment(title,ctx.dictSet):[];
+ if(ctx.dictSet&&hits.length===0) errs.push('未命中词库任何词（可能含生造字或词库不匹配）');
+
+ // 词级堆砌计数（对齐官方口径：同一关键词不超过 2 次）
+ const cnt=new Map();hits.forEach(w=>cnt.set(w,(cnt.get(w)||0)+1));
+ cnt.forEach((c,w)=>{if(c>2) errs.push(`关键词「${w}」出现 ${c} 次，有堆砌风险`);});
+
+ const cats=new Set();hits.forEach(w=>routeHits(w).filter(r=>r.kind==='category').forEach(r=>cats.add(r.name)));
+ if(cats.size>1) warns.push(`跨类目词共存：${[...cats].join('、')}（类目归属模糊风险）`);
+
+ SYNONYM_GROUPS.forEach(g=>{const n=hits.filter(w=>g.some(x=>w===x||w.includes(x))).length;if(n>2) warns.push(`同义词过多：${g.filter(x=>hits.some(w=>w.includes(x))).join('、')}（建议保留 1–2 个）`);});
+
+ if(ctx.attrWhitelist?.size){
+  const attrHits=[...ATTR_TOKENS].filter(t=>title.includes(t)&&!ctx.attrWhitelist.has(t));
+  if(attrHits.length) errs.push(`属性词不在白名单：${[...new Set(attrHits)].join('、')}（与后台属性不符，降权高发）`);
+ }
+ return {len,ok:errs.length===0,errs,warns,hits};
+}
+
+/* ---- 9. 诊断（不给总分，给维度+动作） ---- */
+function diagnose(title,ctx={}){
+ const len=tl(title),hits=ctx.dictSet?segment(title,ctx.dictSet):[];
+ const pop=hits.reduce((s,w)=>{const r=(ctx._rows||[]).find(x=>x.kw_str===w);return s+(r?pick(r.pop,'mid'):0);},0);
+ const coreFirst=hits.length>0&&tl(title.slice(0,title.indexOf(hits[0])+hits[0].length))<=CFG.CORE_ZONE;
+ const dims=[
+  {k:'长度',v:`${len}/${CFG.TITLE_MAX}`,ok:len<=CFG.TITLE_MAX&&len>=CFG.TITLE_MAX-CFG.FILL_TOLERANCE},
+  {k:'覆盖人气',v:pop>1e4?(pop/1e4).toFixed(1)+'万':Math.round(pop),ok:pop>0},
+  {k:'命中词数',v:String(hits.length),ok:hits.length>=6},
+  {k:'核心前置',v:coreFirst?'是':'否',ok:coreFirst},
+  {k:'冗余度',v:(hits.length-new Set(hits).size)===0?'无':'有重复',ok:hits.length===new Set(hits).size},
+ ];
+ const actions=[];
+ if(len<CFG.TITLE_MAX-4) actions.push(`还可补 ${CFG.TITLE_MAX-len} 字符，优先材质/功能词`);
+ if(!coreFirst) actions.push('把核心大词移到最前面');
+ if(hits.length<6) actions.push('补充场景词或人群词扩大入口');
+ if(pop===0&&hits.length>0) actions.push('命中词均无热度数据，检查导入列是否识别正确');
+ return {dims,actions,hits};
+}
+function analyzeExisting(title,ctx){const v=validate(title,ctx),d=diagnose(title,ctx);return {...v,...d};}
+
+/* ---- 10. 批量生成（带种子采样 + 店内排重） ---- */
+function jaccard(a,b){const A=new Set(a),B=new Set(b);let n=0;B.forEach(x=>{if(A.has(x))n++;});const u=A.size+B.size-n;return u?n/u:0;}
+function batchGenerate(pool,n=20,opts={}){
+ const simMax=opts.similarityMax??0.75,dictSet=opts.dictSet||new Set(),exist=(opts.existing||[]).map(t=>String(t).trim()).filter(Boolean);
+ const out=[];let att=0;const max=Math.min(n*12,3000);
+ while(out.length<n&&att++<max){
+  const t=buildTitles(pool,{index:out.length,seed:out.length*997+1});
+  const all=[...new Set([...(t.head.words||[]),...(t.waist.words||[]),...(t.tail.words||[])])];
+  if(all.length<5) break;
+  if(out.some(o=>jaccard(all,o._fp)>simMax)) continue;
+  if(exist.length&&exist.some(e=>jaccard(all,[...new Set(segment(e,dictSet))])>0.7)) continue;
+  out.push({n:out.length+1,head:t.head,waist:t.waist,tail:t.tail,_fp:all});
+ }
+ return {results:out,generated:out.length,warning:out.length<n?`仅生成 ${out.length} 条（词库差异度不足或受店内排重限制）`:null};
+}
+
+/* ---- 11. 持久化 ---- */
+const store={save(k,v){try{localStorage.setItem('tt_'+k,JSON.stringify(v));}catch(e){console.warn(e);}},load(k){try{return JSON.parse(localStorage.getItem('tt_'+k));}catch{return null;}},keys(){try{return Object.keys(localStorage).filter(k=>k.startsWith('tt_')).map(k=>k.slice(3));}catch{return[];}}};
+
+return {CFG,parseCSV,mergeSupply,analyze,buildTitles,batchGenerate,validate,diagnose,analyzeExisting,segment,compose,tagWord,routeHits,tl,ATTR,CATEGORY_GROUPS,SYNONYM_GROUPS,EXTREME,STOP,parseInterval,pick,store,jaccard};
+})();
+</script>
+
+<script>
+/* ---- UI 逻辑 ---- */
+let WORDS=[],POOL=null,DICT_SET=null,ROWS=[],CUR_RESULTS=[];
+const $=id=>document.getElementById(id);
+const split=v=>(v||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+
+document.getElementById('tabs').addEventListener('click',e=>{
+ if(!e.target.dataset.t) return;
+ document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+ e.target.classList.add('active');
+ document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+ $('p-'+e.target.dataset.t).classList.add('active');
+ if(e.target.dataset.t==='history') renderHist();
+});
+
+function doImport(){
+ WORDS=Engine.parseCSV($('raw').value);
+ const sup=Engine.parseCSV($('supply').value); if(sup.length) Engine.mergeSupply(WORDS,sup);
+ const res=Engine.analyze(WORDS,{ban:split($('ban').value),must:split($('must').value),shopType:$('shopType').value,
+  mode:$('mode').value,headPct:+$('headPct').value||.12,tailPct:+$('tailPct').value||.45});
+ POOL=res.pool; DICT_SET=res.dictSet; ROWS=res.data;
+ $('importInfo').innerHTML=`<span>有效词 ${res.data.length}</span><span>头部 ${POOL.head.length}</span><span>腰部 ${POOL.mid.length}</span><span>尾部 ${POOL.tail.length}</span>`
+  +(res.hasSupply?'<span class="ok">✅ 已用在线商品数</span>':'<span class="warn">⚠ 无供给列，使用转化效率代理</span>')
+  +res.warnings.map(w=>`<span class="warn">${w}</span>`).join('')+res.infos.map(i=>`<span>${i}</span>`).join('');
+ renderLexicon(res.data);
+ Engine.store.save('last_import',{raw:$('raw').value,supply:$('supply').value,ban:$('ban').value,must:$('must').value,awhite:$('awhite').value});
+ if(res.warnings.length) alert('导入完成，但有提示：\n'+res.warnings.join('\n')); else alert('导入完成，共 '+res.data.length+' 个有效词');
+}
+
+function renderLexicon(data){
+ $('lexCnt').textContent=`共 ${data.length} 词`;
+ const tb=document.querySelector('#lexTable tbody');tb.innerHTML='';
+ data.slice(0,2000).forEach(r=>{const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${esc(r.kw_str)}</td><td>${r.pop_raw||pickRaw(r.pop)}</td><td>${r.cvr_raw||pickRaw(r.cvr)}</td>
+  <td>${r.tier}</td><td>${r.tag?.type||''}</td><td>${r.sc.toFixed(3)}</td><td>${r.eff.toFixed(4)}</td>
+  <td class="${r.warn?'warn':''}">${r.warn||''}</td>`;tb.appendChild(tr);});
+}
+const pickRaw=iv=>Number.isFinite(iv.mid)?(iv.spread>1.5?`${iv.lo.toFixed(0)}~${iv.hi.toFixed(0)}`:iv.mid.toFixed(0)):'';
+
+function doGenerate(){
+ if(!POOL){alert('请先导入数据');return;}
+ const n=Math.min(500,+$('batchN').value||20);
+ const {results,warning}=Engine.batchGenerate(POOL,n,{existing:split($('exist').value),dictSet:DICT_SET});
+ CUR_RESULTS=results;
+ $('resCard').style.display='block';
+ const tb=document.querySelector('#resTable tbody');tb.innerHTML='';
+ [['head','头部'],['waist','腰部'],['tail','尾部']].forEach(([k,label])=>{
+  results.forEach(r=>{const d=r[k];if(!d.title) return;
+   const v=Engine.validate(d.title,{dictSet:DICT_SET,attrWhitelist:new Set(split($('awhite').value))});
+   const tr=document.createElement('tr');if(k==='head') tr.className='row-label';
+   let status='';
+   if(v.ok) status='<span class="badge ok">合规</span>';
+   else{status=v.errs.map(e=>`<span class="badge err">${esc(e)}</span>`).join('<br>');if(v.warns.length) status+='<br>'+v.warns.map(w=>`<span class="badge warn">${esc(w)}</span>`).join('<br>');}
+   tr.innerHTML=`<td>${r.n}</td><td>${label}</td><td class="title-cell">${esc(d.title)}</td>
+   <td class="mono">${d.len}/60</td><td>${status}</td><td style="font-size:12px;color:#888">${esc(d.msg)}</td>
+   <td><button class="btn sm" onclick="copyOne(this,\`${d.title.replace(/`/g,'\\`').replace(/\\/g,'\\\\')}\`)">复制</button></td>`;
+   tb.appendChild(tr);});});
+ if(warning) alert(warning);
+ Engine.store.save('last_results',results.map(r=>({n:r.n,head:r.head,waist:r.waist,tail:r.tail})));
+}
+
+function doDiag(){
+ const t=$('diagInput').value.trim();if(!t){alert('请输入标题');return;}
+ const d=Engine.analyzeExisting(t,{dictSet:DICT_SET,attrWhitelist:new Set(split($('awhite').value)),_rows:ROWS});
+ $('diagOut').innerHTML=`<div>${d.dims.map(x=>`<span class="dim ${x.ok?'ok':'no'}">${x.k}：${esc(String(x.v))}</span>`).join('')}</div>`
+  +(d.actions.length?`<ul class="actions">${d.actions.map(a=>`<li>${esc(a)}</li>`).join('')}</ul>`:'')
+  +`<div class="hint" style="margin-top:8px">命中词：${d.hits.map(h=>esc(h)).join('、')||'无'}</div>`
+  +(d.errs.length?`<div style="margin-top:6px">${d.errs.map(e=>`<span class="badge err">${esc(e)}</span>`).join(' ')}</div>`:'')
+  +(d.warns.length?`<div style="margin-top:6px">${d.warns.map(w=>`<span class="badge warn">${esc(w)}</span>`).join(' ')}</div>`:'');
+}
+
+function copyOne(btn,text){navigator.clipboard.writeText(text).then(()=>{const o=btn.textContent;btn.textContent='已复制';setTimeout(()=>btn.textContent=o,1200);}).catch(()=>{prompt('请手动复制：',text);});}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+function renderHist(){const ks=Engine.store.keys();$('histList').innerHTML=ks.length?ks.map(k=>`<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:13px">${esc(k)}</div>`).join(''):'<span class="hint">暂无</span>';}
+function clearHist(){Engine.store.keys().forEach(k=>localStorage.removeItem('tt_'+k));renderHist();}
+function exportCSV(){if(!CUR_RESULTS.length){alert('无结果');return;}
+ let csv='\uFEFF序号,层级,标题,长度\n';CUR_RESULTS.forEach(r=>['head','waist','tail'].forEach(k=>{if(r[k]?.title) csv+=`${r.n},${k},${r[k].title},${r[k].len}\n`;}));
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='titles.csv';a.click();}
+
+// 设置面板
+(function(){const g=$('cfgGrid');Object.entries(Engine.CFG).forEach(([k,v])=>{if(typeof v==='function')return;
+ const d=document.createElement('div');d.className='field';d.innerHTML=`<label>${k}</label><input data-cfg="${k}" value="${v}">`;g.appendChild(d);});})();
+
+window.addEventListener('DOMContentLoaded',()=>{const s=Engine.store.load('last_import');if(s){$('raw').value=s.raw||'';$('supply').value=s.supply||'';$('ban').value=s.ban||'';$('must').value=s.must||'';$('awhite').value=s.awhite||'';}});
+</script>
+</body>
+</html>
